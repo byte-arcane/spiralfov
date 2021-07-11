@@ -33,7 +33,7 @@ g_canvas_rects = None
 g_prev_elems = {}
 g_binary_visibility = False
 g_binary_visibility_threshold = 3
-def rebuild_canvas(canvas, src, los, visibilityMap):
+def rebuild_canvas(canvas, src, los, visibilityMap, on_fov_step_callback = None):
     global g_canvas_rects
     global g_prev_elems
     
@@ -42,7 +42,7 @@ def rebuild_canvas(canvas, src, los, visibilityMap):
     updated_elems = {}
     def cb(p,v):
         updated_elems[p] = v
-    fovmap = fov.fov( src, los, visibilityMap, cb)
+    fovmap = fov.fov( src, los, visibilityMap, cb, on_fov_step_callback)
     process_elems = updated_elems.copy()
     fcolor = ""
     first_time = g_canvas_rects is None
@@ -99,10 +99,20 @@ canvas.pack()
 
 rebuild_canvas(canvas, g_cursor, LOS, visibilityMap)
 g_last_calculated_cursor = g_cursor
-g_blocker_transparency = 0
+g_blocker_transparency = 0.0
 
+def current_config():
+    return [
+        ("cursor", g_cursor),
+        ("losRadius", LOS),
+        ("blocker transparency", g_blocker_transparency),
+        ("binary visibility", g_binary_visibility),
+        ("binary visibility threshold", g_binary_visibility_threshold),
+        ("fov decay percent", fov.DECAY_PER_TILE_PERCENT)
+    ]
 def update_title():
-    window.title(f"Cursor at {g_cursor}, LOS radius: {LOS}, blocker_transparency: {g_blocker_transparency}, binary visibility: {g_binary_visibility}, binary visibility threshold {g_binary_visibility_threshold*0.1}, fov decay percent: {fov.DECAY_PER_TILE_PERCENT}")
+    title_str = ", ".join([f"{kv[0]}={kv[1]}" for kv in current_config()])
+    window.title(title_str)
 
 def canvas_coords(evt):
     global g_cursor
@@ -172,6 +182,53 @@ def fov_decay_down(evt):
     fov.DECAY_PER_TILE_PERCENT = max(fov.DECAY_PER_TILE_PERCENT-0.1, 0.0)
     update_title()
     rebuild_canvas(canvas, g_cursor, LOS, visibilityMap)
+    
+def run_visualize(evt):
+    import imageio
+    import numpy
+    import subprocess
+    from PIL import Image, ImageDraw
+    images = []
+    
+    # Create the base image that we'll be updating
+    img_tile_size = min(TILE_SIZE - (TILE_SIZE%4),16)
+    imgbase = Image.new("RGB", (img_tile_size*visibilityMap.width, img_tile_size*visibilityMap.height), "black")
+    imgbase_drawer = ImageDraw.Draw(imgbase)  
+    def draw_rect( p, fill):
+        x0 = p.x*img_tile_size
+        y0 = p.y*img_tile_size
+        imgbase_drawer.rectangle([x0,y0,x0+img_tile_size,y0+img_tile_size],fill,outline = "black")
+        
+    def make_rgb( vis, fov):
+        ambient = 0.3
+        rgb = [1, vis, 1] # white for floor, magenta for wall
+        return tuple([int(255*x*(fov*(1-ambient) + ambient)) for x in rgb])
+    for y in range(visibilityMap.height):
+        for x in range(visibilityMap.width):
+            p = ivec2(x,y)
+            v = visibilityMap.get(p)
+            draw_rect(p, make_rgb(v,0))
+    draw_rect(g_cursor, "red")
+    
+    def on_fov_step_callback(p, nbs, amt):
+        v = visibilityMap.get(p) 
+        draw_rect(p, make_rgb(v,amt))
+        img = imgbase.copy()
+        linedrawer = ImageDraw.Draw(img)  
+        for nb in nbs:
+            xy = [ img_tile_size//2 + img_tile_size*c for c in [p.x, p.y, nb.x, nb.y]]
+            linedrawer.line(xy, fill='red', width=3)
+        images.append(img)
+    rebuild_canvas(canvas, g_cursor, LOS, visibilityMap, on_fov_step_callback)
+    title_str = ", ".join([f"{kv[0]}={kv[1]}" for kv in current_config()])
+    print("Saving gif...")
+    gif_filename = f'{mapnames[USE_VISIBILITY_MAP]}_{g_cursor}_{title_str}.gif'
+    imageio.mimsave(gif_filename, images)
+    print("Converting to mp4")
+    mp4_filename = gif_filename[:-3] + 'mp4'
+    cmd = f"ffmpeg -i \"{gif_filename}\" -preset veryslow -tune animation -pix_fmt yuv420p -crf 8 -profile:v high -an \"{mp4_filename}\""
+    subprocess.call(cmd, shell=True)
+    print("Done")
             
 canvas.bind('<Motion>', canvas_coords)
 canvas.bind('<Enter>', canvas_coords)  # handle <Alt>+<Tab> switches between windows    
@@ -184,5 +241,6 @@ window.bind('<F7>', binary_los_up)
 window.bind('<F8>', binary_los_down)
 window.bind('<F9>', fov_decay_up)
 window.bind('<F10>', fov_decay_down)
-
+window.bind('<F11>', run_visualize)
+window.focus_force()
 tk.mainloop()

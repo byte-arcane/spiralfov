@@ -12,10 +12,11 @@ DECAY_PER_TILE_PERCENT = 0.9 # e.g. Visibility reduces to 90% from a tile to the
 # calculate ONCE the list of sorted points
 sortedPoints = SortedPoints(MAX_LOS)
 
-def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None ):
+def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None, onFovStepCallback = None ):
     """
     Calculate the field-of-vision map (0: can't see, 1: see maximum, and anything in between)
-    Support a callback to mark all the cells we've visited (parameters: position and visibility value)
+    onFovSetCallback: callback to mark all the cells we've visited (parameters: position and visibility value)
+    onFovStepCallback: callback for each iteration (parameters: position and up to two closest previous neighbours, as a list, and the amount of visibility)
     """
     
     # Initialise map. 
@@ -65,6 +66,8 @@ def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None ):
             amt = calc_visibility(pnb)
             prevDecay = calc_decay(pnb)
             amt = max(amt + prevDecay - curDecay, 0)
+            if onFovStepCallback:
+                onFovStepCallback(p, [pnb], amt)
         # NOT diagonal or axis-aligned: previous contribution comes from TWO tiles, so get their contribution and mix it
         else:
             # We need to calculate the closest 2 points on the line from current point to the viewer:
@@ -75,7 +78,6 @@ def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None ):
                 pnb = ivec2(p.x - sign(o.x), p.y);
             else: #ox_abs < oy_abs
                 pnb = ivec2(p.x, p.y - sign(o.y));
-            
             
             # calculate visibility and decay for both relevant points
             amt0 = calc_visibility(pnb)
@@ -92,6 +94,9 @@ def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None ):
             prevDecay = lerp(prevDecay0, prevDecay1, t);
             amt = lerp(amt0, amt1, t);
             amt = max(amt + prevDecay - curDecay, 0.0);
+            
+            if onFovStepCallback:
+                onFovStepCallback(p, [pnb_diag, pnb], amt)
             
         fovmap.set(p,amt)
         if onFovSetCallback:
