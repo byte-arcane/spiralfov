@@ -22,7 +22,7 @@ There are several controls, using the function keys. The current configuration s
 * F5: When in binary visibility mode, increase the percentage threshold
 * F6: When in binary visibility mode, decrease the percentage threshold
 * F7: Increase the viewer line of sight radius (up to a maximum, in fov.py)
-* F8: Decrease the viewer line of sight radius (down to 1, in fov.py)
+* F8: Decrease the viewer line of sight radius (down to 1)
 * F9: Increase the fov algorithm's decay parameter (see fov.py for details)
 * F10: Decrease the fov algorithm's decay parameter (see fov.py for details)
 * F11: Export GIF and mp4 (you need extra packages for this: PIL, imageio and ffmpeg needs to be in PATH)
