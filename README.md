@@ -25,6 +25,7 @@ There are several controls, using the function keys. The current configuration s
 * F8: Decrease the viewer line of sight radius (down to 1, in fov.py)
 * F9: Increase the fov algorithm's decay parameter (see fov.py for details)
 * F10: Decrease the fov algorithm's decay parameter (see fov.py for details)
+* F11: Export GIF and mp4 (you need extra packages for this: PIL, imageio and ffmpeg needs to be in PATH)
 
 
 Note: Googling the name "Spiral FoV", it might have some similarities with [this](http://www.roguebasin.com/index.php?title=Spiral_Path_FOV), but more as a concept, as I might have heard that method in passing and that's about it.
