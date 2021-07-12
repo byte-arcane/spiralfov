@@ -1,5 +1,5 @@
 # spiralfov
-Field-of-vision algorithm that I'm using for the game, it's very fast and quite configurable. 
+Field-of-vision algorithm that I'm using for [Age of Transcendence](https://byte-arcane.github.io/age-of-transcendence/), it's very fast and quite configurable. 
 
 ## Requirements:
 
