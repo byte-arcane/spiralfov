@@ -10,6 +10,24 @@ def sign(v):
 def lerp(a,b,t):
     # linear interpolation between scalars a and b using t
     return (1-t)*a + t*b
+    
+def clamp(x,a,b):
+    return min(max(x,a),b)
+    
+def step(a,t):
+    return 0 if t < a else 1
+    
+def smoothstep(a,b,t):
+    x = clamp((t-a)/(t-a),0,1)
+    return x*x*(3-2*x)
+    
+def smootherstep(a,b,t):
+    x = clamp((t-a)/(t-a),0,1)
+    return x * x * x * (x * (x * 6 - 15) + 10)
+    
+def dot(v,q):
+    print("dot",v,q)
+    return v[0]*q[0] + v[1]*q[1]
 
 class ivec2(object):
     def __init__(self, x=0, y=0):
@@ -36,6 +54,12 @@ class ivec2(object):
     def sign(self):
         # vector-form of the sign function
         return ivec2(sign(self.x), sign(self.y))
+        
+    def muls(self, scalar):
+        return ivec2(self.x*scalar, self.y * scalar)
+        
+    def mulv(self, v):
+        return ivec2(self.x*v.x, self.y * v.y)
 
     def normalized(self):
         # Return a unit vector based on this. return (0,0) if this vector is zero
@@ -102,6 +126,10 @@ class Map2D(object):
     def set(self, point, value):
         assert( self.in_bounds(point))
         self.data[ self.linear_index(point)] = value
+        
+    def add(self, point, value):
+        assert( self.in_bounds(point))
+        self.data[ self.linear_index(point)] += value
         
     def in_bounds( self, point ):
         return point.x >= 0 and point.x < self.width and point.y >= 0 and point.y < self.height

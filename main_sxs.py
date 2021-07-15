@@ -3,8 +3,11 @@ import datetime
 import tkinter as tk
 
 import fov_demoutil
-import fov_trap as fov
+import fov
+import fov_permissive
 from mathutil import *
+
+fov.DECAY_PER_TILE_PERCENT = 0
 
 # Get all maps
 mapnames = os.listdir('maps')
@@ -28,49 +31,60 @@ while True:
 visibilityMap = visibilityMaps[USE_VISIBILITY_MAP]
 
 TILE_SIZE = 8
-LOS = 10
+LOS = 9
 
 g_canvas_rects = None
-g_prev_elems = {}
+g_prev_elems_spir = {}
+g_prev_elems_perm = {}
 g_binary_visibility = True
 g_binary_visibility_threshold = 0
 g_total_time = 0.0
 g_num_times = 0
-g_hovered_vis_pt = None
-
 def rebuild_canvas(canvas, src, los, visibilityMap, on_fov_step_callback = None):
     global g_canvas_rects
-    global g_prev_elems
+    global g_prev_elems_spir
+    global g_prev_elems_perm
     global g_total_time
     global g_num_times
     
     w = visibilityMap.width
     h = visibilityMap.height
-    updated_elems = {}
-    def cb(p,v):
-        updated_elems[p] = v
+    updated_elems_spir = {}
+    updated_elems_perm = {}
+    def cb_spir(p,v):
+        updated_elems_spir[p] = v
+    def cb_perm(p,v):
+        updated_elems_perm[p] = v
     start_time = datetime.datetime.now()
-    fovmap = fov.fov( src, los, visibilityMap, cb)
+    fovmap_perm = fov_permissive.fov( src, los, visibilityMap, cb_perm, on_fov_step_callback)  
+    fovmap_spir = fov.fov( src, los, visibilityMap, cb_spir, on_fov_step_callback) 
     g_total_time += (datetime.datetime.now() - start_time).total_seconds() * 0.001
     g_num_times += 1
-    print("Avg time so far: " + str(g_total_time / g_num_times) + " updated elems: " + str(len(updated_elems.keys())))
-    process_elems = updated_elems.copy()
+    print("Avg time so far: " + str(g_total_time / g_num_times))
+    process_elems_spir = updated_elems_spir.copy()
+    process_elems_perm = updated_elems_perm.copy()
     fcolor = ""
     first_time = g_canvas_rects is None
     if first_time:
-        g_canvas_rects = [None] * len(visibilityMap.data)
+        g_canvas_rects = [None] * len(visibilityMap.data) * 2
         # First time we have to process ALL elements. So set all invisible elements to 0
         for y in range(h):
             for x in range(w):
                 p = ivec2(x,y)
-                if p not in updated_elems.keys():
-                    process_elems[p] = 0
+                if p not in updated_elems_spir.keys():
+                    process_elems_spir[p] = 0
+                if p not in updated_elems_perm.keys():
+                    process_elems_perm[p] = 0
     else:
         #print(len(g_prev_elems))
-        for k,v in g_prev_elems.items():
-            if k not in updated_elems.keys(): # if previous point not in updated elements, set visibility to 0
-                process_elems[k] = 0
-    for p, v in process_elems.items():
+        for k,v in g_prev_elems_spir.items():
+            if k not in updated_elems_spir.keys(): # if previous point not in updated elements, set visibility to 0
+                process_elems_spir[k] = 0
+        for k,v in g_prev_elems_perm.items():
+            if k not in updated_elems_perm.keys(): # if previous point not in updated elements, set visibility to 0
+                process_elems_perm[k] = 0
+                
+    for p, v in process_elems_spir.items():
         x = p.x
         y = p.y
         vq = int(v*10)
@@ -84,43 +98,41 @@ def rebuild_canvas(canvas, src, los, visibilityMap, on_fov_step_callback = None)
         else:
             fcolor = "#0{0}0".format(hex(6+vq-1)[2:])
         if first_time:
-            g_canvas_rects[x+y*w] = canvas.create_rectangle(x*TILE_SIZE, y*TILE_SIZE, (x+1)*TILE_SIZE, (y+1)*TILE_SIZE, fill= fcolor)
+            g_canvas_rects[x+y*w*2] = canvas.create_rectangle(x*TILE_SIZE, y*TILE_SIZE, (x+1)*TILE_SIZE, (y+1)*TILE_SIZE, fill= fcolor)
         else:
-            canvas.itemconfig(g_canvas_rects[x+y*w], fill=fcolor)
+            canvas.itemconfig(g_canvas_rects[x+y*w*2], fill=fcolor)
             
-    if False:
-        if g_hovered_vis_pt and last_visited:
-            s = {}
-            for data in last_visited:
-                p = data[0]
-                amt = data[1]
-                if p in s.keys():
-                    if s[p] < amt:
-                        s[p] = amt
-                else:
-                    s[p] = amt
-            for p,amt in s.items():
-                x = p.x
-                y = p.y
-                vq = int(amt*10)
-                fcolor = "#{0}{0}0".format(hex(6+vq-1)[2:])
-                #fcolor = "yellow" if amt > 0 else "black"
-                canvas.itemconfig(g_canvas_rects[x+y*w], fill=fcolor)
+    for p, v in process_elems_perm.items():
+        x = p.x
+        y = p.y
+        vq = int(v*10)
+        if g_binary_visibility:
+            vq = 0 if g_binary_visibility_threshold >= vq else 10
+        blocker = visibilityMap.get(p) < 1
+        if src == p:
+            fcolor = 'red'
+        elif blocker:
+            fcolor = 'magenta'
+        else:
+            fcolor = "#0{0}0".format(hex(6+vq-1)[2:])
+        if first_time:
+            g_canvas_rects[x+y*w*2+w] = canvas.create_rectangle((x+w)*TILE_SIZE, y*TILE_SIZE, (x+w+1)*TILE_SIZE, (y+1)*TILE_SIZE, fill= fcolor)
+        else:
+            canvas.itemconfig(g_canvas_rects[x+y*w*2+w], fill=fcolor)
             
-    g_prev_elems = updated_elems
+    g_prev_elems_spir = updated_elems_spir
+    g_prev_elems_perm = updated_elems_perm
 
-g_mousehover_cursor = False
 g_cursor = ivec2(0,0)
 g_last_calculated_cursor = ivec2(-1,-1)
-g_last_hovered_vis_pt = None
 
 window = tk.Tk()
 max_screen_width = window.winfo_screenwidth()
 max_screen_height = window.winfo_screenheight()- 50 # remove a bit for title bar or taskbar
-TILE_SIZE = min(max_screen_width//visibilityMap.width, max_screen_height//visibilityMap.height)
+TILE_SIZE = min(max_screen_width//(visibilityMap.width*2), max_screen_height//visibilityMap.height)
 
 
-screenw = TILE_SIZE*visibilityMap.width
+screenw = TILE_SIZE*visibilityMap.width*2
 screenh = TILE_SIZE*visibilityMap.height
 window.geometry("{0}x{1}".format(screenw,screenh))
 
@@ -150,22 +162,15 @@ def update_title():
 def canvas_coords(evt):
     global g_cursor
     global g_last_calculated_cursor
-    global g_hovered_vis_pt
-    global g_last_hovered_vis_pt
     x, y = canvas.canvasx(evt.x), canvas.canvasy(evt.y)
     t = ivec2(int(x) // TILE_SIZE, int(y) // TILE_SIZE)
+    t.x = t.x % visibilityMap.width
     if visibilityMap.in_bounds( t ):
-        if g_mousehover_cursor:
-            g_hovered_vis_pt = t
-            if g_last_hovered_vis_pt is None or (not (g_last_hovered_vis_pt == g_hovered_vis_pt)):
-                g_last_hovered_vis_pt = g_hovered_vis_pt
-                rebuild_canvas(canvas, g_cursor, LOS, visibilityMap)
-        else:
-            g_cursor = t
-            update_title()
-            if not (g_last_calculated_cursor == g_cursor):
-                g_last_calculated_cursor = g_cursor
-                rebuild_canvas(canvas, g_cursor, LOS, visibilityMap)
+        g_cursor = t
+        update_title()
+        if not (g_last_calculated_cursor == g_cursor):
+            g_last_calculated_cursor = g_cursor
+            rebuild_canvas(canvas, g_cursor, LOS, visibilityMap)
 
 def blocker_change_transparency():    
     global visibilityMap
@@ -203,7 +208,7 @@ def binary_visibility_threshold_down(evt):
     
 def binary_los_up(evt):
     global LOS
-    LOS = min(LOS+1, MAX_LOS)
+    LOS = min(LOS+1, fov.MAX_LOS)
     update_title()
     rebuild_canvas(canvas, g_cursor, LOS, visibilityMap)
     
@@ -270,16 +275,6 @@ def run_visualize(evt):
     cmd = f"ffmpeg -i \"{gif_filename}\" -preset veryslow -tune animation -pix_fmt yuv420p -crf 8 -profile:v high -an \"{mp4_filename}\""
     subprocess.call(cmd, shell=True)
     print("Done")
-    
-def toggle_mousehover(evt):
-    global g_mousehover_cursor
-    global g_hovered_vis_pt
-    global g_last_hovered_vis_pt
-    g_mousehover_cursor = not g_mousehover_cursor
-    if not g_mousehover_cursor:
-        g_hovered_vis_pt = None
-        g_last_hovered_vis_pt = None
-        
             
 canvas.bind('<Motion>', canvas_coords)
 canvas.bind('<Enter>', canvas_coords)  # handle <Alt>+<Tab> switches between windows    
@@ -293,6 +288,5 @@ window.bind('<F8>', binary_los_down)
 window.bind('<F9>', fov_decay_up)
 window.bind('<F10>', fov_decay_down)
 window.bind('<F11>', run_visualize)
-window.bind('<F12>', toggle_mousehover)
 window.focus_force()
 tk.mainloop()
