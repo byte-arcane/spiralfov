@@ -3,7 +3,7 @@ import datetime
 import tkinter as tk
 
 import fov_demoutil
-import fov_trap as fov
+import fov_rho as fov
 from mathutil import *
 
 # Get all maps
@@ -49,8 +49,15 @@ def rebuild_canvas(canvas, src, los, visibilityMap, on_fov_step_callback = None)
     updated_elems = {}
     def cb(p,v):
         updated_elems[p] = v
+    contributors = []
+    def cb_contributors( points ):
+        for p in points:
+            contributors.append(p)
     start_time = datetime.datetime.now()
-    fovmap = fov.fov( src, los, visibilityMap, cb)
+    fnContributors = None
+    if g_hovered_vis_pt:
+        fnContributors = cb_contributors
+    fovmap = fov.fov( src, los, visibilityMap, cb, g_hovered_vis_pt, fnContributors)
     g_total_time += (datetime.datetime.now() - start_time).total_seconds() * 0.001
     g_num_times += 1
     print("Avg time so far: " + str(g_total_time / g_num_times) + " updated elems: " + str(len(updated_elems.keys())))
@@ -88,24 +95,14 @@ def rebuild_canvas(canvas, src, los, visibilityMap, on_fov_step_callback = None)
         else:
             canvas.itemconfig(g_canvas_rects[x+y*w], fill=fcolor)
             
-    if False:
-        if g_hovered_vis_pt and last_visited:
-            s = {}
-            for data in last_visited:
-                p = data[0]
-                amt = data[1]
-                if p in s.keys():
-                    if s[p] < amt:
-                        s[p] = amt
-                else:
-                    s[p] = amt
-            for p,amt in s.items():
-                x = p.x
-                y = p.y
-                vq = int(amt*10)
-                fcolor = "#{0}{0}0".format(hex(6+vq-1)[2:])
-                #fcolor = "yellow" if amt > 0 else "black"
-                canvas.itemconfig(g_canvas_rects[x+y*w], fill=fcolor)
+    if contributors:
+        for p,amt in contributors:
+            x = p.x
+            y = p.y
+            vq = int(amt*10)
+            fcolor = "#{0}{0}0".format(hex(6+vq-1)[2:])
+            #fcolor = "yellow" if amt > 0 else "black"
+            canvas.itemconfig(g_canvas_rects[x+y*w], fill=fcolor)
             
     g_prev_elems = updated_elems
 
@@ -203,7 +200,7 @@ def binary_visibility_threshold_down(evt):
     
 def binary_los_up(evt):
     global LOS
-    LOS = min(LOS+1, MAX_LOS)
+    LOS = min(LOS+1, fov.MAX_LOS)
     update_title()
     rebuild_canvas(canvas, g_cursor, LOS, visibilityMap)
     

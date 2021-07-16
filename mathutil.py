@@ -26,7 +26,6 @@ def smootherstep(a,b,t):
     return x * x * x * (x * (x * 6 - 15) + 10)
     
 def dot(v,q):
-    print("dot",v,q)
     return v[0]*q[0] + v[1]*q[1]
 
 class ivec2(object):

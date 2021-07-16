@@ -7,9 +7,7 @@ from mathutil import *
 DECAY_PER_TILE_PERCENT = 0.9 # e.g. Visibility reduces to 90% from a tile to the next
 
 """
-    TODOs:
-        each point reads from 2. So, change so I don't write to future objects
-        
+    FoV algorithm based on the implicit rhombus mesh of each octant
 """
 
 def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None):
@@ -24,13 +22,14 @@ def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None):
     # The algorithm supports visibility reduction from one tile to the next, based on losRadius (so at losRadius we've lost all visibility)
     # We can adjust this decay using DECAY_PER_TILE_PERCENT
     decayPerTile = DECAY_PER_TILE_PERCENT/float(losRadius)
+    
     def calc_decay( q ):
-        # Helper to calculate decay percentage, based on distance to viewer
+        # Helper to calculate decay percentage, based on distance of a point q to the viewer
         return (q - viewerPos).length() * decayPerTile; # decay until last tile. proportional to distance
 
         
     def calc_adj_contrib(  col, row ):
-        # calculate the number of times it has been swept
+        # calculate the number of times a basic rhombus has been swept across rows and columns
         # otgt - ivec2(2,1) + ivec2(1,1)
         x = col-1
         y = row
@@ -53,13 +52,15 @@ def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None):
                 for i in range(1,math.ceil(losRadius)+1):
                     o = ivec2(x*i,y*i)
                     p = viewerPos + o
+                    # handle out-of-bounds and further from los radius
                     if (not fovmap.in_bounds(p)) or (o.squaredLength() > losRadiusSquared):
                         continue
                     pnb = p - ivec2(x,y)
+                    # propagate visibility multiplicatively based on last cell's values
                     amt = visibilityMap.get(pnb) * fovmap.get(pnb)
                     fovmap.set(p,amt) # don't add decay -- we're going to add that later
     
-    # do the inner parts. 
+    # do the inner octant parts. Represent them as a "forward" direction (along the straight line) and an "up" direction, perpendicular to the forward, towards the diagonal
     axis_sets = [
         (ivec2(1,0),ivec2(0,1)),
         (ivec2(1,0),ivec2(0,-1)),
@@ -71,34 +72,41 @@ def fov( viewerPos, losRadius, visibilityMap, onFovSetCallback = None):
         (ivec2(0,-1),ivec2(1,0)),
     ]
     for (fwd,up) in axis_sets:
-        #fwd = ivec2(1,0)
-        #up = ivec2(0,-1)
-        upfwd = up+fwd
+        diag = up+fwd
         for row in range(0,math.ceil(losRadius)+1):
             for col in range(row,math.ceil(losRadius)+1):
-                if col == 0 and row == 0: # skip the first point
+                # skip the first point, already calculated and contributes to no inner point directly
+                if col == 0 and row == 0: 
                     continue
                     
+                # calculate the offset
                 o = fwd.muls(col) + up.muls(row)
+                # calculate the absolute position
                 p = viewerPos + o
+                # if not in bounds, or further than max los, skip
                 if (not fovmap.in_bounds(p)) or (o.squaredLength() > losRadiusSquared):
                     continue
 
+                # get current visibility FOR the cell, and the visibility AT the cell
                 amt = fovmap.get( p )
-                
-                pnb = p + upfwd
                 vis = visibilityMap.get(p)
+                
+                # see if we need to update our top-right neighbour
+                pnb = p + diag
                 if col != row and fovmap.in_bounds(pnb) and (pnb-viewerPos).squaredLength() <= losRadiusSquared:
+                    # calculate contribution, multiplied by the visibility and ADD to neighbour's visibility value
                     contrib = calc_adj_contrib(col+1,row+1)[0] * vis
                     fovmap.add(pnb, contrib*amt)
                     
-                # if the diagonal exists, the right one also exists
+                # see if we need to update our right neighbour
                 pnb = p + fwd
                 if row > 0 and fovmap.in_bounds(pnb) and (pnb-viewerPos).squaredLength() <= losRadiusSquared:
+                    # calculate contribution, multiplied by the visibility and ADD to neighbour's visibility value
                     contrib = calc_adj_contrib(col+1,row)[1]* vis
                     fovmap.add(pnb, contrib*amt)
                         
                 # NOW apply the decay, after we've propagated, but only if it's not straight/diag
+                # Because we're never going to use these values again, while the straight/diagonals could be used in other octants
                 if row != col and col != 0 and row != 0:
                     amt = max(amt-calc_decay(p),0)
                     fovmap.set( p, amt) 
